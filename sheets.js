@@ -1,19 +1,12 @@
 const { google } = require("googleapis");
 
 const SPREADSHEET_ID = process.env.GOOGLE_SHEET_ID;
-const SHEET_NAME = process.env.GOOGLE_SHEET_NAME || "Expenses";
+const SHEET_NAME = process.env.GOOGLE_SHEET_NAME || "Sheet1";
 
 async function getClient() {
-  let credentials;
-  try {
-    // Decode from base64 to avoid JSON formatting issues in env vars
-    const b64 = process.env.GOOGLE_SERVICE_ACCOUNT_B64;
-    const json = Buffer.from(b64, "base64").toString("utf8");
-    credentials = JSON.parse(json);
-  } catch (err) {
-    console.error("Failed to parse service account:", err.message);
-    throw err;
-  }
+  const b64 = process.env.GOOGLE_SERVICE_ACCOUNT_B64;
+  const json = Buffer.from(b64, "base64").toString("utf8");
+  const credentials = JSON.parse(json);
 
   const auth = new google.auth.GoogleAuth({
     credentials,
@@ -23,36 +16,27 @@ async function getClient() {
   return google.sheets({ version: "v4", auth });
 }
 
-async function ensureHeaders(sheets) {
-  const headers = ["Ref", "Name", "Phone", "Category", "Amount (AED)", "Date", "Description", "Submitted At"];
-  try {
-    const res = await sheets.spreadsheets.values.get({
-      spreadsheetId: SPREADSHEET_ID,
-      range: `${SHEET_NAME}!A1:H1`,
-    });
-    if (!res.data.values || res.data.values.length === 0) {
-      await sheets.spreadsheets.values.update({
-        spreadsheetId: SPREADSHEET_ID,
-        range: `${SHEET_NAME}!A1`,
-        valueInputOption: "RAW",
-        requestBody: { values: [headers] },
-      });
-    }
-  } catch (err) {
-    console.error("Error checking headers:", err.message);
-  }
-}
-
 async function appendExpense({ ref, name, phone, category, amount, date, description, submittedAt }) {
   try {
     const sheets = await getClient();
-    await ensureHeaders(sheets);
 
-    const row = [ref, name, phone, category, amount, date, description, submittedAt];
+    // Match exact column order: ExenseID | SubmittedAt | WorkerPhone | WorkerName | Team | Project | Amount (AED) | Description | ReceiptURL | Status
+    const row = [
+      ref,          // ExenseID
+      submittedAt,  // SubmittedAt
+      phone,        // WorkerPhone
+      name,         // WorkerName
+      "",           // Team (blank for now)
+      category,     // Project (using category)
+      amount,       // Amount (AED)
+      description,  // Description
+      "",           // ReceiptURL (blank for now)
+      "Pending",    // Status
+    ];
 
     const response = await sheets.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
-      range: `${SHEET_NAME}!A:H`,
+      range: `${SHEET_NAME}!A:J`,
       valueInputOption: "USER_ENTERED",
       insertDataOption: "INSERT_ROWS",
       requestBody: { values: [row] },
