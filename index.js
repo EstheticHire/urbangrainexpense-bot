@@ -6,37 +6,36 @@ app.use(express.urlencoded({ extended: true }));
 
 app.post("/webhook", async (req, res) => {
   try {
-    // Log everything to see what LetsBot is actually sending
-    console.log("Headers:", JSON.stringify(req.headers));
-    console.log("Body:", JSON.stringify(req.body));
-    console.log("Query:", JSON.stringify(req.query));
+    const event = req.body.event;
+    const data = req.body.data || {};
 
-    const data = req.body;
-
-    if (data.fromMe === true || data.fromMe === "true") {
+    // Only handle message_notification events
+    if (event !== "message_notification") {
       return res.status(200).json({ status: "ignored" });
     }
 
-    const messageText = data.body || data.message || data.text || "";
-    const messageType = data.messageType || data.type || "";
+    if (data.fromMe === true) {
+      return res.status(200).json({ status: "ignored fromMe" });
+    }
 
-    if (!messageText) {
-      return res.status(200).json({ status: "ignored no text" });
+    if (!data.body || data.messageType !== "text") {
+      return res.status(200).json({ status: "ignored non-text" });
     }
 
     const phone = data.author || (data.remoteJid || "").replace("@s.whatsapp.net", "");
+    const message = data.body;
     const name = data.pushName || data.chatName || "Labour";
 
-    console.log("Phone:", phone, "Message:", messageText, "Name:", name);
+    console.log("Phone:", phone, "Message:", message, "Name:", name);
 
     if (!phone) {
       return res.status(200).json({ status: "no phone" });
     }
 
     const { handleIncoming } = require("./conversation");
-    await handleIncoming({ phone, message: messageText, name });
+    await handleIncoming({ phone, message, name });
 
-    console.log("Done");
+    console.log("Done ✅");
     res.status(200).json({ status: "ok" });
   } catch (err) {
     console.error("Error:", err.message);
