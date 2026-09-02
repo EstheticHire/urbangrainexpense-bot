@@ -14,13 +14,18 @@ app.post("/webhook", async (req, res) => {
       return res.status(200).json({ status: "ignored" });
     }
 
+    // Ignore non-message events (ack, contact, delivery receipts)
+    if (!body.body || body.messageType !== "text") {
+      return res.status(200).json({ status: "ignored" });
+    }
+
     // LetsBot actual payload fields
     const phone = body.author || (body.remoteJid || "").replace("@s.whatsapp.net", "");
     const message = body.body || "";
     const name = body.pushName || body.chatName || "Labour";
 
     if (!phone) {
-      return res.status(400).json({ error: "No phone number found" });
+      return res.status(200).json({ status: "no phone, ignored" });
     }
 
     await handleIncoming({ phone, message, name });
