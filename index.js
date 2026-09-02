@@ -25,24 +25,18 @@ app.post("/webhook", async (req, res) => {
     }
 
     const phone = data.author || (data.remoteJid || "").replace("@s.whatsapp.net", "");
-    const message = data.body || data.caption || "";
     const name = data.pushName || data.chatName || "Labour";
 
-    // Extract image ID - log full payload to find correct field
-    console.log("Full data:", JSON.stringify(data));
-    const messages = data.messages || [];
-    const imageId = data.image?.id ||
-                    messages[0]?.image?.id ||
-                    data.mediaId ||
-                    data.fileId ||
-                    "";
+    // For images, body contains the direct URL
+    const message = isImage ? "" : (data.body || "");
+    const imageUrl = isImage ? (data.body || "") : "";
 
-    console.log("Phone:", phone, "Type:", messageType, "Message:", message, "ImageId:", imageId);
+    console.log("Phone:", phone, "Type:", messageType, "ImageUrl:", imageUrl, "Message:", message);
 
     if (!phone) return res.status(200).json({ status: "no phone" });
 
     const { handleIncoming } = require("./conversation");
-    await handleIncoming({ phone, message, name, imageId, messageType });
+    await handleIncoming({ phone, message, name, imageUrl, messageType });
 
     console.log("Done ✅");
     res.status(200).json({ status: "ok" });

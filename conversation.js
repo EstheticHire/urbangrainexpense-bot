@@ -1,4 +1,4 @@
-const { sendMessage, getMediaUrl, downloadMedia } = require("./letsbot");
+const { sendMessage, downloadMedia } = require("./letsbot");
 const { appendExpense } = require("./sheets");
 const { uploadReceipt } = require("./drive");
 const { generateRef } = require("./utils");
@@ -51,7 +51,7 @@ function parseCategory(input) {
   return CATEGORIES.find((c) => c.toLowerCase().includes(lower)) || null;
 }
 
-async function handleIncoming({ phone, message, name, imageId, messageType }) {
+async function handleIncoming({ phone, message, name, imageUrl, messageType }) {
   const text = (message || "").trim();
   const lower = text.toLowerCase();
 
@@ -104,21 +104,15 @@ async function handleIncoming({ phone, message, name, imageId, messageType }) {
         session.receiptUrl = "";
         session.step = "confirm";
         await sendMessage(phone, PROMPTS.confirm(session));
-      } else if (messageType === "image" && imageId) {
-        await sendMessage(phone, "⏳ Processing your receipt...");
-        const tempUrl = await getMediaUrl(imageId);
-        if (tempUrl) {
-          const media = await downloadMedia(tempUrl);
-          if (media) {
-            const ref = session.ref || generateRef();
-            session.ref = ref;
-            const driveUrl = await uploadReceipt(
-              media.buffer,
-              media.contentType,
-              `receipt-${ref}.jpg`
-            );
-            session.receiptUrl = driveUrl;
-          }
+      } else if (messageType === "image" && imageUrl) {
+        await sendMessage(phone, "⏳ Uploading your receipt...");
+        const ref = session.ref || generateRef();
+        session.ref = ref;
+        // Download from LetsBot storage and upload to Google Drive
+        const media = await downloadMedia(imageUrl);
+        if (media) {
+          const driveUrl = await uploadReceipt(media.buffer, media.contentType, `receipt-${ref}.jpg`);
+          session.receiptUrl = driveUrl;
         }
         session.step = "confirm";
         await sendMessage(phone, PROMPTS.confirm(session));
