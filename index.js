@@ -2,35 +2,44 @@ const express = require("express");
 
 const app = express();
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 app.post("/webhook", async (req, res) => {
   try {
-    const body = req.body;
-    console.log("Incoming webhook body field:", body.body);
-    console.log("messageType:", body.messageType);
-    console.log("fromMe:", body.fromMe);
+    // Log everything to see what LetsBot is actually sending
+    console.log("Headers:", JSON.stringify(req.headers));
+    console.log("Body:", JSON.stringify(req.body));
+    console.log("Query:", JSON.stringify(req.query));
 
-    if (body.fromMe === true) {
+    const data = req.body;
+
+    if (data.fromMe === true || data.fromMe === "true") {
       return res.status(200).json({ status: "ignored" });
     }
 
-    if (!body.body || body.messageType !== "text") {
-      return res.status(200).json({ status: "ignored non-text" });
+    const messageText = data.body || data.message || data.text || "";
+    const messageType = data.messageType || data.type || "";
+
+    if (!messageText) {
+      return res.status(200).json({ status: "ignored no text" });
     }
 
-    const phone = body.author || (body.remoteJid || "").replace("@s.whatsapp.net", "");
-    const message = body.body || "";
-    const name = body.pushName || body.chatName || "Labour";
+    const phone = data.author || (data.remoteJid || "").replace("@s.whatsapp.net", "");
+    const name = data.pushName || data.chatName || "Labour";
 
-    console.log("Parsed - phone:", phone, "message:", message, "name:", name);
+    console.log("Phone:", phone, "Message:", messageText, "Name:", name);
+
+    if (!phone) {
+      return res.status(200).json({ status: "no phone" });
+    }
 
     const { handleIncoming } = require("./conversation");
-    await handleIncoming({ phone, message, name });
-    
-    console.log("handleIncoming completed");
+    await handleIncoming({ phone, message: messageText, name });
+
+    console.log("Done");
     res.status(200).json({ status: "ok" });
   } catch (err) {
-    console.error("Webhook error:", err.message);
+    console.error("Error:", err.message);
     console.error("Stack:", err.stack);
     res.status(500).json({ error: err.message });
   }
