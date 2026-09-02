@@ -1,18 +1,14 @@
 const axios = require("axios");
 
-const LETSBOT_API_URL = "https://theurbangrain.letsbot.net/api/v1";
-const LETSBOT_TOKEN = process.env.LETSBOT_TOKEN; // Set in Railway env vars
-const LETSBOT_INSTANCE = process.env.LETSBOT_INSTANCE; // Your LetsBot instance ID
+const LETSBOT_TOKEN = process.env.LETSBOT_TOKEN;
+const LETSBOT_INSTANCE = process.env.LETSBOT_INSTANCE;
+const BASE_URL = "https://theurbangrain.letsbot.net";
 
-/**
- * Send a WhatsApp message via LetsBot API
- * @param {string} phone - Recipient phone number (international format, e.g. 971501234567)
- * @param {string} text - Message text (supports WhatsApp markdown: *bold*, _italic_)
- */
 async function sendMessage(phone, text) {
   try {
+    // Try the v2 API endpoint
     const response = await axios.post(
-      `${LETSBOT_API_URL}/send-text`,
+      `${BASE_URL}/api/v2/send-text`,
       {
         instance: LETSBOT_INSTANCE,
         phone: phone,
@@ -25,14 +21,10 @@ async function sendMessage(phone, text) {
         },
       }
     );
-
     console.log(`✅ Message sent to ${phone}:`, response.data);
     return response.data;
   } catch (err) {
-    console.error(
-      `❌ Failed to send message to ${phone}:`,
-      err.response?.data || err.message
-    );
+    console.error(`❌ Failed to send message to ${phone}:`, err.response?.data || err.message);
     throw err;
   }
 }
