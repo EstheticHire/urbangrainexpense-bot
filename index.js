@@ -18,23 +18,31 @@ app.post("/webhook", async (req, res) => {
 
     const messageType = data.messageType || "";
     const isText = messageType === "text";
-    const isMedia = ["image", "document", "pdf"].includes(messageType);
+    const isImage = messageType === "image";
 
-    if (!isText && !isMedia) {
-      return res.status(200).json({ status: "ignored non-text" });
+    if (!isText && !isImage) {
+      return res.status(200).json({ status: "ignored" });
     }
 
     const phone = data.author || (data.remoteJid || "").replace("@s.whatsapp.net", "");
     const message = data.body || data.caption || "";
     const name = data.pushName || data.chatName || "Labour";
-    const mediaUrl = data.mediaUrl || data.fileUrl || data.media || "";
 
-    console.log("Phone:", phone, "Message:", message, "Type:", messageType, "Media:", mediaUrl);
+    // Extract image ID - log full payload to find correct field
+    console.log("Full data:", JSON.stringify(data));
+    const messages = data.messages || [];
+    const imageId = data.image?.id ||
+                    messages[0]?.image?.id ||
+                    data.mediaId ||
+                    data.fileId ||
+                    "";
+
+    console.log("Phone:", phone, "Type:", messageType, "Message:", message, "ImageId:", imageId);
 
     if (!phone) return res.status(200).json({ status: "no phone" });
 
     const { handleIncoming } = require("./conversation");
-    await handleIncoming({ phone, message, name, mediaUrl, messageType });
+    await handleIncoming({ phone, message, name, imageId, messageType });
 
     console.log("Done ✅");
     res.status(200).json({ status: "ok" });

@@ -1,5 +1,6 @@
-const { sendMessage } = require("./letsbot");
+const { sendMessage, getMediaUrl, downloadMedia } = require("./letsbot");
 const { appendExpense } = require("./sheets");
+const { uploadReceipt } = require("./drive");
 const { generateRef } = require("./utils");
 
 const sessions = {};
@@ -17,50 +18,29 @@ const CATEGORIES = [
 const PROMPTS = {
   start: (name) =>
     `👋 Hi ${name}! Welcome to the Expense Bot.\n\nLet's log your expense. Type *cancel* anytime to start over.\n\n📂 *Step 1 of 5 — Category*\nWhat type of expense is this?\n\n${CATEGORIES.map((c, i) => `${i + 1}. ${c}`).join("\n")}\n\nReply with the number or name.`,
-
-  amount: () =>
-    `💰 *Step 2 of 5 — Amount*\nHow much did you spend? (in AED)\n\nExample: _120_ or _85.50_`,
-
-  date: () =>
-    `📅 *Step 3 of 5 — Date*\nWhat date was this expense?\n\nReply with:\n• *today*\n• *yesterday*\n• Or a date like _02-Sep_ or _02/09/2026_`,
-
-  description: () =>
-    `📝 *Step 4 of 5 — Description*\nAdd a short note about this expense.\n\nExample: _Petrol for site visit to Al Quoz_`,
-
-  receipt: () =>
-    `📎 *Step 5 of 5 — Receipt*\nPlease send a photo or PDF of your receipt.\n\nOr type *skip* to submit without a receipt.`,
-
+  amount: () => `💰 *Step 2 of 5 — Amount*\nHow much did you spend? (in AED)\n\nExample: _120_ or _85.50_`,
+  date: () => `📅 *Step 3 of 5 — Date*\nWhat date was this expense?\n\nReply:\n• *today*\n• *yesterday*\n• Or _02-Sep_`,
+  description: () => `📝 *Step 4 of 5 — Description*\nAdd a short note.\n\nExample: _Petrol for site visit to Al Quoz_`,
+  receipt: () => `📎 *Step 5 of 5 — Receipt*\nPlease send a *photo* of your receipt.\n\nOr type *skip* to submit without one.`,
   confirm: (s) =>
-    `✅ *Please confirm your expense:*\n\n📂 Category: ${s.category}\n💰 Amount: AED ${s.amount}\n📅 Date: ${s.date}\n📝 Note: ${s.description}\n🧾 Receipt: ${s.receiptUrl ? "Attached ✅" : "None"}\n\nReply *YES* to submit or *NO* to start over.`,
-
-  success: (ref) =>
-    `🎉 *Expense logged successfully!*\n\n🔖 Reference: *${ref}*\n\nYour expense has been recorded. Thank you!`,
-
-  cancelled: () =>
-    `❌ Expense cancelled. Send any message to start a new one.`,
-
-  invalid_amount: () =>
-    `⚠️ That doesn't look like a valid amount. Please enter a number.\n\nExample: _120_ or _85.50_`,
-
-  invalid_category: () =>
-    `⚠️ Please reply with a number (1–7) or the category name.`,
+    `✅ *Please confirm:*\n\n📂 Category: ${s.category}\n💰 Amount: AED ${s.amount}\n📅 Date: ${s.date}\n📝 Note: ${s.description}\n🧾 Receipt: ${s.receiptUrl ? "Attached ✅" : "Not provided"}\n\nReply *YES* to submit or *NO* to cancel.`,
+  success: (ref) => `🎉 *Expense logged!*\n\n🔖 Reference: *${ref}*\n\nThank you!`,
+  cancelled: () => `❌ Cancelled. Send any message to start over.`,
+  invalid_amount: () => `⚠️ Please enter a valid amount. Example: _120_`,
+  invalid_category: () => `⚠️ Please reply with a number (1–7) or category name.`,
 };
 
 function parseDate(input) {
   const lower = input.trim().toLowerCase();
   const today = new Date();
-  if (lower === "today") {
-    return today.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
-  }
+  if (lower === "today") return today.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
   if (lower === "yesterday") {
     const y = new Date(today);
     y.setDate(y.getDate() - 1);
     return y.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
   }
   const parsed = new Date(input.replace(/-/g, " "));
-  if (!isNaN(parsed)) {
-    return parsed.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
-  }
+  if (!isNaN(parsed)) return parsed.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
   return input.trim();
 }
 
@@ -71,7 +51,7 @@ function parseCategory(input) {
   return CATEGORIES.find((c) => c.toLowerCase().includes(lower)) || null;
 }
 
-async function handleIncoming({ phone, message, name, mediaUrl, messageType }) {
+async function handleIncoming({ phone, message, name, imageId, messageType }) {
   const text = (message || "").trim();
   const lower = text.toLowerCase();
 
@@ -98,7 +78,6 @@ async function handleIncoming({ phone, message, name, mediaUrl, messageType }) {
       await sendMessage(phone, PROMPTS.amount());
       break;
     }
-
     case "amount": {
       const amt = parseFloat(text.replace(/[^0-9.]/g, ""));
       if (isNaN(amt) || amt <= 0) { await sendMessage(phone, PROMPTS.invalid_amount()); return; }
@@ -107,14 +86,12 @@ async function handleIncoming({ phone, message, name, mediaUrl, messageType }) {
       await sendMessage(phone, PROMPTS.date());
       break;
     }
-
     case "date": {
       session.date = parseDate(text);
       session.step = "description";
       await sendMessage(phone, PROMPTS.description());
       break;
     }
-
     case "description": {
       session.description = text;
       session.receiptUrl = "";
@@ -122,25 +99,37 @@ async function handleIncoming({ phone, message, name, mediaUrl, messageType }) {
       await sendMessage(phone, PROMPTS.receipt());
       break;
     }
-
     case "receipt": {
       if (lower === "skip") {
         session.receiptUrl = "";
-      } else if (mediaUrl) {
-        session.receiptUrl = mediaUrl;
-      } else if (lower !== "") {
-        // They typed something instead of sending a photo
-        await sendMessage(phone, `⚠️ Please send a photo/PDF of your receipt, or type *skip* to continue without one.`);
-        return;
+        session.step = "confirm";
+        await sendMessage(phone, PROMPTS.confirm(session));
+      } else if (messageType === "image" && imageId) {
+        await sendMessage(phone, "⏳ Processing your receipt...");
+        const tempUrl = await getMediaUrl(imageId);
+        if (tempUrl) {
+          const media = await downloadMedia(tempUrl);
+          if (media) {
+            const ref = session.ref || generateRef();
+            session.ref = ref;
+            const driveUrl = await uploadReceipt(
+              media.buffer,
+              media.contentType,
+              `receipt-${ref}.jpg`
+            );
+            session.receiptUrl = driveUrl;
+          }
+        }
+        session.step = "confirm";
+        await sendMessage(phone, PROMPTS.confirm(session));
+      } else {
+        await sendMessage(phone, `⚠️ Please send a *photo* of your receipt, or type *skip*.`);
       }
-      session.step = "confirm";
-      await sendMessage(phone, PROMPTS.confirm(session));
       break;
     }
-
     case "confirm": {
       if (lower === "yes" || lower === "y") {
-        const ref = generateRef();
+        const ref = session.ref || generateRef();
         await appendExpense({
           ref,
           name: session.name,
@@ -160,7 +149,6 @@ async function handleIncoming({ phone, message, name, mediaUrl, messageType }) {
       }
       break;
     }
-
     default: {
       delete sessions[phone];
       sessions[phone] = { step: "category", name };
