@@ -4,14 +4,6 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Log all env vars on startup to verify
-console.log("ENV CHECK:");
-console.log("LETSBOT_TOKEN:", process.env.LETSBOT_TOKEN ? "✅ set" : "❌ missing");
-console.log("LETSBOT_INSTANCE:", process.env.LETSBOT_INSTANCE ? "✅ set" : "❌ missing");
-console.log("GOOGLE_SHEET_ID:", process.env.GOOGLE_SHEET_ID ? "✅ set" : "❌ missing");
-console.log("GOOGLE_SERVICE_ACCOUNT_B64:", process.env.GOOGLE_SERVICE_ACCOUNT_B64 ? "✅ set" : "❌ missing");
-console.log("GOOGLE_SERVICE_ACCOUNT_JSON:", process.env.GOOGLE_SERVICE_ACCOUNT_JSON ? "✅ set" : "❌ missing");
-
 app.post("/webhook", async (req, res) => {
   try {
     const event = req.body.event;
@@ -23,18 +15,26 @@ app.post("/webhook", async (req, res) => {
     if (data.fromMe === true) {
       return res.status(200).json({ status: "ignored fromMe" });
     }
-    if (!data.body || data.messageType !== "text") {
+
+    const messageType = data.messageType || "";
+    const isText = messageType === "text";
+    const isMedia = ["image", "document", "pdf"].includes(messageType);
+
+    if (!isText && !isMedia) {
       return res.status(200).json({ status: "ignored non-text" });
     }
 
     const phone = data.author || (data.remoteJid || "").replace("@s.whatsapp.net", "");
-    const message = data.body;
+    const message = data.body || data.caption || "";
     const name = data.pushName || data.chatName || "Labour";
+    const mediaUrl = data.mediaUrl || data.fileUrl || data.media || "";
 
-    console.log("Phone:", phone, "Message:", message, "Name:", name);
+    console.log("Phone:", phone, "Message:", message, "Type:", messageType, "Media:", mediaUrl);
+
+    if (!phone) return res.status(200).json({ status: "no phone" });
 
     const { handleIncoming } = require("./conversation");
-    await handleIncoming({ phone, message, name });
+    await handleIncoming({ phone, message, name, mediaUrl, messageType });
 
     console.log("Done ✅");
     res.status(200).json({ status: "ok" });
