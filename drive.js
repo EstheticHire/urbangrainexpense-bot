@@ -1,26 +1,48 @@
-const axios = require("axios");
-const FormData = require("form-data");
+const { google } = require("googleapis");
+const { Readable } = require("stream");
 
-// Upload to Imgur - free, permanent, no auth needed for anonymous uploads
+const FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID || "";
+
+async function getClient() {
+  const oauth2Client = new google.auth.OAuth2(
+    process.env.GOOGLE_OAUTH_CLIENT_ID,
+    process.env.GOOGLE_OAUTH_CLIENT_SECRET,
+    "http://localhost:3000/callback"
+  );
+
+  oauth2Client.setCredentials({
+    refresh_token: process.env.GOOGLE_OAUTH_REFRESH_TOKEN,
+  });
+
+  return google.drive({ version: "v3", auth: oauth2Client });
+}
+
 async function uploadReceipt(buffer, contentType, filename) {
   try {
-    const form = new FormData();
-    form.append("image", buffer.toString("base64"));
-    form.append("type", "base64");
-    form.append("name", filename);
+    const drive = await getClient();
 
-    const response = await axios.post("https://api.imgur.com/3/image", form, {
-      headers: {
-        Authorization: "Client-ID 546c25a59c58ad7", // Imgur public client ID
-        ...form.getHeaders(),
+    const response = await drive.files.create({
+      requestBody: {
+        name: filename,
+        parents: FOLDER_ID ? [FOLDER_ID] : [],
       },
+      media: {
+        mimeType: contentType,
+        body: Readable.from(buffer),
+      },
+      fields: "id, webViewLink",
     });
 
-    const url = response.data?.data?.link || "";
-    console.log("✅ Receipt uploaded to Imgur:", url);
-    return url;
+    // Make publicly viewable so link works in sheet
+    await drive.permissions.create({
+      fileId: response.data.id,
+      requestBody: { role: "reader", type: "anyone" },
+    });
+
+    console.log("✅ Receipt uploaded to Drive:", response.data.webViewLink);
+    return response.data.webViewLink;
   } catch (err) {
-    console.error("❌ Imgur upload failed:", err.response?.data || err.message);
+    console.error("❌ Drive upload failed:", err.message);
     return "";
   }
 }
