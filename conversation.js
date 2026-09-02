@@ -1,6 +1,5 @@
-const { sendMessage, downloadMedia } = require("./letsbot");
+const { sendMessage } = require("./letsbot");
 const { appendExpense } = require("./sheets");
-const { uploadReceipt } = require("./drive");
 const { generateRef } = require("./utils");
 
 const sessions = {};
@@ -105,15 +104,8 @@ async function handleIncoming({ phone, message, name, imageUrl, messageType }) {
         session.step = "confirm";
         await sendMessage(phone, PROMPTS.confirm(session));
       } else if (messageType === "image" && imageUrl) {
-        await sendMessage(phone, "⏳ Uploading your receipt...");
-        const ref = session.ref || generateRef();
-        session.ref = ref;
-        // Download from LetsBot storage and upload to Google Drive
-        const media = await downloadMedia(imageUrl);
-        if (media) {
-          const driveUrl = await uploadReceipt(media.buffer, media.contentType, `receipt-${ref}.jpg`);
-          session.receiptUrl = driveUrl;
-        }
+        // Store LetsBot storage URL directly — it's permanent
+        session.receiptUrl = imageUrl;
         session.step = "confirm";
         await sendMessage(phone, PROMPTS.confirm(session));
       } else {
