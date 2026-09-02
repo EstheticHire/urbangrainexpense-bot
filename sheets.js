@@ -6,13 +6,12 @@ const SHEET_NAME = process.env.GOOGLE_SHEET_NAME || "Expenses";
 async function getClient() {
   let credentials;
   try {
-    const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
-    // Fix escaped newlines in private key if needed
-    const fixed = raw.replace(/\\n/g, "\n");
-    credentials = JSON.parse(fixed);
+    // Decode from base64 to avoid JSON formatting issues in env vars
+    const b64 = process.env.GOOGLE_SERVICE_ACCOUNT_B64;
+    const json = Buffer.from(b64, "base64").toString("utf8");
+    credentials = JSON.parse(json);
   } catch (err) {
-    console.error("Failed to parse service account JSON:", err.message);
-    console.error("First 100 chars:", process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.substring(0, 100));
+    console.error("Failed to parse service account:", err.message);
     throw err;
   }
 
@@ -25,10 +24,7 @@ async function getClient() {
 }
 
 async function ensureHeaders(sheets) {
-  const headers = [
-    "Ref", "Name", "Phone", "Category",
-    "Amount (AED)", "Date", "Description", "Submitted At",
-  ];
+  const headers = ["Ref", "Name", "Phone", "Category", "Amount (AED)", "Date", "Description", "Submitted At"];
   try {
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
