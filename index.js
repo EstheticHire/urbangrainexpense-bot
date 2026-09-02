@@ -4,16 +4,20 @@ const { handleIncoming } = require("./conversation");
 const app = express();
 app.use(express.json());
 
-// LetsBot sends incoming messages here
 app.post("/webhook", async (req, res) => {
   try {
     const body = req.body;
     console.log("Incoming webhook:", JSON.stringify(body, null, 2));
 
-    // LetsBot webhook payload structure
-    const phone = body.phone || body.from || body.contact?.phone;
-    const message = body.message || body.text || body.body || "";
-    const name = body.contact?.name || body.name || "Labour";
+    // Ignore messages sent by the bot itself
+    if (body.fromMe === true) {
+      return res.status(200).json({ status: "ignored" });
+    }
+
+    // LetsBot actual payload fields
+    const phone = body.author || (body.remoteJid || "").replace("@s.whatsapp.net", "");
+    const message = body.body || "";
+    const name = body.pushName || body.chatName || "Labour";
 
     if (!phone) {
       return res.status(400).json({ error: "No phone number found" });
@@ -27,7 +31,6 @@ app.post("/webhook", async (req, res) => {
   }
 });
 
-// Health check
 app.get("/", (req, res) => res.json({ status: "Expense Bot running ✅" }));
 
 const PORT = process.env.PORT || 3000;
